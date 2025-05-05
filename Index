@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>May 14-30 Appointment Calendar</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .calendar-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+            background-color: white;
+        }
+        .calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+        }
+        .day-header {
+            text-align: center;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+        .day {
+            border: 1px solid #ddd;
+            min-height: 150px;
+            padding: 5px;
+            background-color: white;
+        }
+        .date {
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+        .unavailable {
+            background-color: #f5f5f5;
+            color: #999;
+        }
+        .period-container {
+            margin-bottom: 10px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 3px;
+        }
+        .period-label {
+            font-weight: bold;
+            font-size: 0.7em;
+            background-color: #f0f0f0;
+            padding: 2px;
+            margin-bottom: 3px;
+            border-radius: 2px;
+        }
+        .time-slot {
+            font-size: 0.65em;
+            padding: 2px;
+            margin: 1px 0;
+            cursor: pointer;
+            border-radius: 2px;
+            border: 1px solid #f5f5f5;
+        }
+        .time-slot:hover {
+            background-color: #e0e0ff;
+        }
+        .time-slot.booked {
+            background-color: #d4edda;
+        }
+        .time-slot.unavailable-slot {
+            background-color: #f8d7da;
+            cursor: not-allowed;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 5px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 8px 0;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #2d3b45;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #1d2b35;
+        }
+        .appointment-name {
+            font-size: 0.6em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <h1>May 14-30, 2024 Appointment Calendar</h1>
+        <div class="controls">
+            <button id="clearAll">Clear All Appointments</button>
+            <button id="viewAppointments">View All Appointments</button>
+        </div>
+        <div class="calendar" id="calendar"></div>
+    </div>
+
+    <!-- Modal for name input -->
+    <div id="nameModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Book Appointment</h3>
+            <p id="modalTime"></p>
+            <input type="text" id="nameInput" placeholder="Enter your name">
+            <button id="confirmBooking">Confirm</button>
+        </div>
+    </div>
+
+    <!-- Modal for viewing appointments -->
+    <div id="appointmentsModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>All Booked Appointments</h3>
+            <div id="appointmentsList"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const year = 2024;
+            const month = 4; // May (0-indexed)
+            const calendar = document.getElementById('calendar');
+            let selectedSlot = null;
+            
+            // Define the periods with exact start/end times
+            const periods = [
+                { name: "PERIOD 1", start: "9:35", end: "10:21" },
+                { name: "PERIOD 2", start: "10:24", end: "11:13" },
+                { name: "PERIOD 4", start: "12:08", end: "12:57" },
+                { name: "PERIOD 5", start: "13:00", end: "13:49" },
+                { name: "PERIOD 6", start: "13:52", end: "14:42" },
+                { name: "PERIOD 8", start: "15:36", end: "16:20" }
+            ];
+            
+            // Create day headers
+            const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            daysOfWeek.forEach(day => {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'day-header';
+                dayHeader.textContent = day;
+                calendar.appendChild(dayHeader);
+            });
+            
+            // Create calendar days (May 14-30)
+            const firstDate = 14;
+            const lastDate = 30;
+            
+            // Find what day of the week May 14th falls on
+            const firstDay = new Date(year, month, firstDate).getDay();
+            
+            // Add empty slots for days before the 14th
+            for (let i = 0; i < firstDay; i++) {
+                const emptyDay = document.createElement('div');
+                emptyDay.className = 'day';
+                calendar.appendChild(emptyDay);
+            }
+            
+            // Create days from May 14th to May 30th
+            for (let date = firstDate; date <= lastDate; date++) {
+                const dayOfWeek = new Date(year, month, date).getDay();
+                const dayElement = document.createElement('div');
+                dayElement.className = 'day';
+                
+                const dateElement = document.createElement('div');
+                dateElement.className = 'date';
+                dateElement.textContent = date;
+                dayElement.appendChild(dateElement);
+                
+                // Block out Sundays (0), Mondays (1), and Saturdays (6)
+                if (dayOfWeek === 0 || dayOfWeek === 1 || dayOfWeek === 6) {
+                    dayElement.classList.add('unavailable');
+                    const unavailableMsg = document.createElement('div');
+                    unavailableMsg.textContent = 'Unavailable';
+                    unavailableMsg.style.fontSize = '0.8em';
+                    unavailableMsg.style.color = '#999';
+                    dayElement.appendChild(unavailableMsg);
+                } else {
+                    // Add periods with 10-minute slots for available days
+                    createPeriodSlots(dayElement, date);
+                }
+                
+                calendar.appendChild(dayElement);
+            }
+            
+            // Modal elements
+            const modal = document.getElementById('nameModal');
+            const modalTime = document.getElementById('modalTime');
+            const nameInput = document.getElementById('nameInput');
+            const confirmBtn = document.getElementById('confirmBooking');
+            const closeBtns = document.getElementsByClassName('close');
+            const appointmentsModal = document.getElementById('appointmentsModal');
+            const appointmentsList = document.getElementById('appointmentsList');
+            
+            // Clear all appointments button
+            document.getElementById('clearAll').addEventListener('click', function() {
+                if (confirm('Are you sure you want to clear all appointments?')) {
+                    const bookedSlots = document.querySelectorAll('.time-slot.booked');
+                    bookedSlots.forEach(slot => {
+                        slot.classList.remove('booked');
+                        slot.innerHTML = slot.dataset.time;
+                        delete slot.dataset.name;
+                    });
+                }
+            });
+            
+            // View all appointments button
+            document.getElementById('viewAppointments').addEventListener('click', function() {
+                const bookedSlots = document.querySelectorAll('.time-slot.booked');
+                appointmentsList.innerHTML = '';
+                
+                if (bookedSlots.length === 0) {
+                    appointmentsList.innerHTML = '<p>No appointments booked yet.</p>';
+                } else {
+                    const list = document.createElement('ul');
+                    bookedSlots.forEach(slot => {
+                        const item = document.createElement('li');
+                        item.innerHTML = `<strong>${slot.dataset.date} - ${slot.dataset.periodName}</strong><br>
+                                         Time: ${slot.dataset.time}<br>
+                                         Student: ${slot.dataset.name || 'No name provided'}`;
+                        list.appendChild(item);
+                    });
+                    appointmentsList.appendChild(list);
+                }
+                
+                appointmentsModal.style.display = 'block';
+            });
+            
+            // Close modals when clicking X
+            Array.from(closeBtns).forEach(btn => {
+                btn.addEventListener('click', function() {
+                    modal.style.display = 'none';
+                    appointmentsModal.style.display = 'none';
+                });
+            });
+            
+            // Close modals when clicking outside
+            window.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+                if (event.target === appointmentsModal) {
+                    appointmentsModal.style.display = 'none';
+                }
+            });
+            
+            function createPeriodSlots(dayElement, date) {
+                const fullDate = `${year}-${(month + 1).toString().padStart(2, '0')}-${date.toString().padStart(2, '0')}`;
+                
+                periods.forEach(period => {
+                    const periodContainer = document.createElement('div');
+                    periodContainer.className = 'period-container';
+                    
+                    const periodLabel = document.createElement('div');
+                    periodLabel.className = 'period-label';
+                    periodLabel.textContent = period.name;
+                    periodContainer.appendChild(periodLabel);
+                    
+                    // Create 10-minute slots within this period
+                    createTimeSlotsForPeriod(periodContainer, period, fullDate);
+                    
+                    dayElement.appendChild(periodContainer);
+                });
+            }
+            
+            function createTimeSlotsForPeriod(container, period, fullDate) {
+                // Convert start/end times to minutes
+                const [startHr, startMin] = period.start.split(':').map(Number);
+                const [endHr, endMin] = period.end.split(':').map(Number);
+                
+                const startMinutes = startHr * 60 + startMin;
+                const endMinutes = endHr * 60 + endMin;
+                
+                // Create 10-minute slots
+                for (let minutes = startMinutes; minutes < endMinutes; minutes += 10) {
+                    const hours = Math.floor(minutes / 60);
+                    const mins = minutes % 60;
+                    const timeString = `${hours}:${mins.toString().padStart(2, '0')}`;
+                    
+                    const slot = document.createElement('div');
+                    slot.className = 'time-slot';
+                    slot.textContent = timeString;
+                    slot.dataset.time = timeString;
+                    slot.dataset.periodName = period.name;
+                    slot.dataset.date = fullDate;
+                    slot.dataset.datetime = `${fullDate}T${timeString.padStart(5, '0')}:00`;
+                    
+                    slot.addEventListener('click', function() {
+                        if (this.classList.contains('booked')) {
+                            if (confirm(`Cancel appointment with ${this.dataset.name || 'unknown'} at ${this.dataset.time} on ${this.dataset.date}?`)) {
+                                this.classList.remove('booked');
+                                this.textContent = this.dataset.time;
+                                delete this.dataset.name;
+                            }
+                        } else {
+                            selectedSlot = this;
+                            modalTime.textContent = `${fullDate} - ${period.name} at ${timeString}`;
+                            nameInput.value = this.dataset.name || '';
+                            modal.style.display = 'block';
+                            nameInput.focus();
+                        }
+                    });
+                    
+                    container.appendChild(slot);
+                }
+            }
+            
+            // Confirm booking
+            confirmBtn.addEventListener('click', function() {
+                if (nameInput.value.trim() === '') {
+                    alert('Please enter a name');
+                    return;
+                }
+                
+                selectedSlot.classList.add('booked');
+                selectedSlot.dataset.name = nameInput.value.trim();
+                selectedSlot.innerHTML = `${selectedSlot.dataset.time}<br>
+                                       <span class="appointment-name">${selectedSlot.dataset.name}</span>`;
+                modal.style.display = 'none';
+            });
+            
+            // Allow pressing Enter to confirm
+            nameInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    confirmBtn.click();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
